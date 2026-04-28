@@ -1,3 +1,6 @@
+fastapi
+pydantic
+python-multipart
 openai
 streamlit
 numpy
