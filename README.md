@@ -4,39 +4,38 @@ This is a learning project where I’m building a **Retrieval-Augmented Generati
 
 The goal is to understand what actually happens behind “chat with your PDF” systems—how documents are processed, embedded, retrieved, and used by LLMs.
 
-Right now, the project has evolved from a simple Streamlit prototype into a **FastAPI-based backend system**, while the **frontend is still in progress and being actively explored**.
-
-For now, the backend is fully usable as a standalone service, and there is also a separate Streamlit demo available for interactive experimentation.
+The project has now evolved into a **FastAPI-based backend system with visual grounding (highlighted PDF regions)**, while the **frontend is still in progress**.
 
 ---
 
 ## 🧠 What I’m Trying to Learn
 
 * How embeddings represent meaning in text
-* How chunking affects retrieval quality
-* How similarity search actually works in practice
-* How RAG pipelines are structured in real systems
-* How backend architecture changes when moving from prototype → API design
-* Where simple retrieval systems break and why
+* How chunking strategies impact retrieval quality
+* How to map LLM answers back to exact document locations
+* How similarity search behaves in real-world documents
+* How RAG systems evolve from prototypes → structured APIs
+* Where naive RAG pipelines fail (and how to improve them)
 
 ---
 
 ## 🧱 Current Architecture
-
-The project is split into a **backend service + experimental frontend demo**:
 
 ```text
 RAG_PDF/
 │
 ├── backend/
 │   ├── main.py              # FastAPI app (upload + ask endpoints)
-│   ├── rag.py               # embeddings, retrieval, LLM logic
-│   ├── pdf_utils.py         # PDF extraction + chunking
+│   ├── rag.py               # embeddings, retrieval, LLM + highlighting logic
+│   ├── pdf_utils.py         # PDF parsing, layout-aware chunking
+│
+├── pdf_store/               # stored PDFs (by hash)
+├── embeddings_store/        # cached embeddings
+├── images/                  # generated highlight images
 │
 ├── frontend/
-│   └── streamlit_demo.py   # standalone Streamlit UI (NOT connected to backend)
+│   └── streamlit_demo.py    # standalone experimental UI
 │
-├── embeddings_store/       # cached embeddings per PDF
 ├── .env
 ├── requirements.txt
 ```
@@ -45,47 +44,139 @@ RAG_PDF/
 
 ## ⚙️ Current Features
 
-### 📄 PDF Processing
+### 📄 PDF Processing (Layout-Aware)
 
-* Upload a PDF via FastAPI (`/upload-pdf`)
-* Extract text using `pdfplumber`
-* Split into overlapping chunks
+* Extracts **word-level data with positions** using `pdfplumber`
+* Reconstructs:
 
-### 🧠 Embeddings & Storage
-
-* Generate embeddings using OpenRouter (`text-embedding-3-small`)
-* Cache embeddings locally using MD5 hash of the file
-* Avoid recomputation on re-upload
-
-### 🔍 Retrieval System
-
-* Embed user query
-* Compute cosine similarity with stored chunks
-* Retrieve most relevant chunks
-
-### 💬 Question Answering
-
-* `/ask` endpoint accepts:
-
-  * `session_id`
-  * `file_hash`
-  * `query`
-* Uses retrieved context + LLM (`gpt-4o-mini`)
-* Returns answer + chat history
-
-### 🧾 Chat Memory
-
-* Maintains in-memory session-based history
-* Keeps last few messages for context
-* Not persisted across restarts
+  * lines → paragraphs → chunks
+* Preserves layout structure instead of raw text dumping
 
 ---
 
-## 🚀 Backend Service (Main System)
+### ✂️ Smart Chunking (Major Upgrade)
 
-The **FastAPI backend is the primary system** in this project.
+* Paragraph-aware chunking (not naive character splitting)
+* Keeps semantic units (lists, sections) intact
+* Uses:
 
-It is fully usable on its own:
+  * `max_words=150`
+  * overlap between chunks
+* Handles:
+
+  * multi-line paragraphs
+  * spacing-based paragraph detection
+
+👉 This significantly improves retrieval quality.
+
+---
+
+### 🧠 Embeddings & Caching
+
+* Uses OpenRouter (`text-embedding-3-small`)
+* Each PDF is hashed (MD5)
+* Embeddings cached locally:
+
+```
+embeddings_store/<file_hash>.pkl
+```
+
+Avoids recomputation entirely on re-upload.
+
+---
+
+### 🔍 Retrieval System
+
+* Query → embedding
+* Cosine similarity against chunk embeddings
+* Top-K chunk selection
+
+Still intentionally simple (no reranking yet) for learning clarity.
+
+---
+
+### 💬 Question Answering (Structured Output)
+
+LLM returns **strict JSON**:
+
+```json
+{
+  "answer": "...",
+  "highlights": [
+    {
+      "text": "exact substring from document",
+      "page": 1,
+      "type": "direct | evidence"
+    }
+  ]
+}
+```
+
+Key behavior:
+
+* Forces **complete answers for list-type questions**
+* Extracts **verbatim supporting text**
+* Separates:
+
+  * direct answers
+  * supporting evidence
+
+---
+
+### 🎯 Grounded Highlights (New 🚀)
+
+This is a major upgrade.
+
+The system now:
+
+1. Matches highlight text → exact word positions
+2. Locates bounding boxes in the PDF
+3. Draws rectangles on the page
+4. Saves annotated images
+
+Output:
+
+```json
+"images": [
+  {
+    "page": 2,
+    "types": ["direct", "evidence"],
+    "image_path": "images/<file_hash>_p2.png"
+  }
+]
+```
+
+Highlight colors:
+
+* 🟢 Green → Direct answer
+* 🟠 Orange → Supporting evidence
+
+👉 This bridges the gap between **LLM answers and visual document grounding**.
+
+---
+
+### 🖼️ Image Rendering
+
+* Uses `pdfplumber` page rendering
+* Generates one annotated image per page
+* Served via FastAPI static route:
+
+```
+/images/<file>.png
+```
+
+---
+
+### 💬 Chat Memory
+
+* Session-based (`session_id`)
+* Maintains short conversation history
+* Used in LLM prompt for context continuity
+* Not persisted (in-memory only)
+
+---
+
+## 🚀 Backend API
 
 ### 📤 Upload PDF
 
@@ -93,7 +184,27 @@ It is fully usable on its own:
 POST /upload-pdf
 ```
 
-Uploads a PDF, processes it, and stores embeddings.
+Response:
+
+```json
+{
+  "message": "Processed and saved",
+  "file_hash": "...",
+  "chunks": 120
+}
+```
+
+OR (cached):
+
+```json
+{
+  "message": "Loaded from cache",
+  "file_hash": "...",
+  "chunks": 120
+}
+```
+
+---
 
 ### 💬 Ask Question
 
@@ -107,20 +218,25 @@ Request:
 {
   "session_id": "user1",
   "file_hash": "abc123",
-  "query": "What is this document about?"
+  "query": "What are the main rules?"
 }
 ```
 
 Response:
 
-* Answer generated using retrieved context + LLM
-* Recent chat history
-
-👉 This backend can be used independently of any UI.
+```json
+{
+  "query": "...",
+  "answer": "...",
+  "highlights": [...],
+  "history": [...],
+  "images": [...]
+}
+```
 
 ---
 
-## 🧪 Frontend (Streamlit Demo - Experimental)
+## 🧪 Frontend (Streamlit Demo)
 
 Located at:
 
@@ -128,60 +244,60 @@ Located at:
 frontend/streamlit_demo.py
 ```
 
-This is:
+* Standalone UI
+* Runs its own RAG pipeline
+* Not connected to backend
 
-* A **standalone interactive UI**
-* Built for quick experimentation and understanding the RAG flow
-* Based on the earlier version of the project
-* **NOT connected to the FastAPI backend**
-
-It directly runs the RAG pipeline inside Streamlit itself (upload → embed → retrieve → answer), so it serves as a **visual learning tool rather than the production flow**.
-
-👉 Think of it as:
-
-> “A sandbox version of the system before API separation”
+👉 Acts as a **learning sandbox**, not production flow.
 
 ---
 
-## 🧱 How It Works (Simplified Flow)
+## 🧱 How It Works (Updated Flow)
 
-### 1. PDF → Text
+### 1. PDF → Words (with positions)
 
-* Extracts all pages into raw text
+* Extract words + bounding boxes
 
-### 2. Text → Chunks
+### 2. Words → Structured Chunks
 
-* Fixed-size chunking (1000 chars + overlap)
-* Simple, not semantic
+* Rebuild lines and paragraphs
+* Chunk semantically
 
 ### 3. Chunks → Embeddings
 
-* Each chunk is converted into a vector
-* Stored locally using file hash
+* Convert each chunk into a vector
 
 ### 4. Query → Retrieval
 
-* User query is embedded
-* Cosine similarity is computed
-* Top relevant chunks are selected
+* Embed query
+* Find most relevant chunks
 
 ### 5. Context → LLM
 
-* Retrieved chunks + chat history
-* Sent to GPT-4o-mini
-* Response returned to user
+* Send context + chat history
+* Enforce structured JSON output
+
+### 6. Highlights → Coordinates
+
+* Match text → word tokens
+* Compute bounding boxes
+
+### 7. Render Images
+
+* Draw highlights on PDF pages
+* Save + return image paths
 
 ---
 
-## 💾 Embedding Cache System
+## 💾 Data Storage
 
-Each uploaded PDF is hashed:
+### PDFs
 
 ```
-embeddings_store/<file_hash>.pkl
+pdf_store/<file_hash>.pdf
 ```
 
-Stored data:
+### Embeddings
 
 ```python
 {
@@ -190,19 +306,23 @@ Stored data:
 }
 ```
 
-This avoids recomputing embeddings for the same document.
+### Images
+
+```
+images/<file_hash>_p<page>.png
+```
 
 ---
 
 ## ⚠️ Limitations
 
-* Only supports one PDF per request flow (via file_hash tracking)
-* Retrieval is basic cosine similarity only
-* No reranking or hybrid search
-* Chunking is purely character-based
-* Chat memory is in-memory only (not persistent)
-* No database or vector store yet
-* Scaling is not handled (single-process design)
+* Single-PDF workflow (per query)
+* No vector database (uses pickle)
+* No reranking / hybrid search
+* Highlight matching is token-based (can fail on edge cases)
+* Chat memory not persistent
+* No authentication or multi-user isolation
+* Not optimized for large-scale PDFs
 
 ---
 
@@ -212,7 +332,7 @@ This avoids recomputing embeddings for the same document.
 pip install fastapi uvicorn pdfplumber openai numpy python-dotenv python-multipart streamlit
 ```
 
-Create `.env`:
+`.env`:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
@@ -224,41 +344,42 @@ Run backend:
 uvicorn backend.main:app --reload
 ```
 
-Run Streamlit demo (optional):
+---
 
-```bash
-streamlit run frontend/streamlit_demo.py
-```
+## 🔮 Next Steps
+
+* Better highlight matching (fuzzy / semantic alignment)
+* Hybrid search (BM25 + embeddings)
+* Reranking layer
+* Persistent chat memory (Redis / DB)
+* Multi-document querying
+* Streaming responses
+* Proper frontend (React or similar)
+* Vector DB integration (FAISS / Pinecone / Weaviate)
 
 ---
 
-## 📌 Why I Built This
+## 📌 Why This Project Exists
 
-I wanted to understand RAG systems by building one manually instead of relying on frameworks like LangChain or LlamaIndex.
+I’m intentionally **not using frameworks like LangChain**.
 
-This project is my attempt to break down:
+The goal is to deeply understand:
 
-* how documents become embeddings
 * how retrieval actually works
-* how context affects LLM answers
-* how backend architecture evolves from prototype → API design
-
----
-
-## 🔮 Next Steps (Ideas I’m Exploring)
-
-* Add semantic or sentence-based chunking
-* Improve retrieval (hybrid search / reranking)
-* Persist chat history properly (Redis or DB)
-* Multi-PDF support per user session
-* Streaming responses (ChatGPT-style UX)
-* Add vector database instead of local pickle storage
+* how chunking affects answers
+* how LLMs use context
+* how to ground answers back to source documents
 
 ---
 
 ## 🤝 Notes
 
-This is not a production system.
+This is not production-ready.
 
-It’s a **learning snapshot of how I’m building understanding of RAG systems step by step**, starting from a simple Streamlit prototype and evolving into a backend-first architecture with a separate experimental UI layer.
+It’s a **learning-first system** that has now reached a stage where it:
 
+✅ Retrieves relevant context
+✅ Generates structured answers
+✅ Grounds responses visually in the original PDF
+
+And that last part—**closing the loop between LLM output and source document**—is where things are getting really interesting.
