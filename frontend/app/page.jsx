@@ -17,6 +17,8 @@ export default function Home() {
   const [processingStatus, setProcessingStatus] = useState('')
   const panelsRef = useRef(null)
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+
   const handleUpload = async (file) => {
     setFileName(file.name)
     setProcessingStatus('Uploading and processing PDF...')
@@ -27,7 +29,7 @@ export default function Home() {
     formData.append('file', file)
 
     try {
-      const response = await fetch('http://localhost:8000/upload-pdf', {
+      const response = await fetch(`${API_BASE_URL}/upload-pdf`, {
         method: 'POST',
         body: formData,
       })
@@ -51,7 +53,7 @@ export default function Home() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8000/ask', {
+      const response = await fetch(`${API_BASE_URL}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,7 +80,7 @@ export default function Home() {
         const processedImages = data.images.map((img) => ({
           page: img.page,
           types: img.types || [],
-          image_path: `http://localhost:8000/${img.image_path}`,
+          image_path: `${API_BASE_URL}/${img.image_path}`,
         }))
         setImages(processedImages)
       }
