@@ -1,18 +1,137 @@
 import pdfplumber
+import re
 
-def extract_text_from_pdf(file):
-    text = ""
+def extract_pages_from_pdf(file):
+    pages = []
 
     with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text += (page.extract_text() or "") + "\n"
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text() or ""
 
-    return text
+            pages.append({
+                "page_number": i + 1,
+                "text": text
+            })
 
-def chunk_text(text, chunk_size=1000, overlap=200):
+    return pages
+
+def extract_pages_with_positions(file):
+    pages = []
+
+    with pdfplumber.open(file) as pdf:
+        for i, page in enumerate(pdf.pages):
+            words = page.extract_words()
+
+            pages.append({
+                "page_number": i + 1,
+                "words": words
+            })
+
+    return pages
+
+def chunk_pages(pages, chunk_size=1000, overlap=200):
     chunks = []
 
-    for i in range(0, len(text), chunk_size - overlap):
-        chunks.append(text[i:i + chunk_size])
-    
+    for page in pages:
+        text = page["text"]
+        page_number = page["page_number"]
+
+        for i in range(0, len(text), chunk_size - overlap):
+            chunk_text = text[i:i + chunk_size]
+
+            chunks.append({
+                "text": chunk_text,
+                "page_number": page_number
+            })
+
     return chunks
+
+def chunk_words(pages, max_words=150, overlap_words=30):
+    """
+    Chunk by sentences/paragraphs instead of raw word count.
+    Keeps semantic units (lists, paragraphs) together.
+    """
+    chunks = []
+
+    for page in pages:
+        words = page["words"]
+        page_number = page["page_number"]
+
+        if not words:
+            continue
+
+        # Rebuild text preserving line breaks using y-position
+        # Group words into lines by their vertical position
+        lines = []
+        current_line = []
+        current_top = None
+
+        for w in words:
+            if current_top is None or abs(w["top"] - current_top) < 3:
+                current_line.append(w)
+                current_top = w["top"]
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = [w]
+                current_top = w["top"]
+
+        if current_line:
+            lines.append(current_line)
+
+        # Group lines into paragraphs (gap > ~10 units = new paragraph)
+        paragraphs = []
+        current_para_words = []
+        prev_bottom = None
+
+        for line in lines:
+            line_top = line[0]["top"]
+            if prev_bottom is not None and (line_top - prev_bottom) > 10:
+                # New paragraph
+                if current_para_words:
+                    paragraphs.append(current_para_words)
+                current_para_words = list(line)
+            else:
+                current_para_words.extend(line)
+            prev_bottom = max(w["bottom"] for w in line)
+
+        if current_para_words:
+            paragraphs.append(current_para_words)
+
+        # Now chunk paragraphs, keeping them together when possible
+        current_chunk_words = []
+
+        def flush_chunk(word_list):
+            if not word_list:
+                return
+            text = " ".join(w["text"] for w in word_list)
+            chunks.append({
+                "text": text,
+                "page_number": page_number,
+                "words": word_list
+            })
+
+        for para_words in paragraphs:
+            if len(current_chunk_words) + len(para_words) <= max_words:
+                current_chunk_words.extend(para_words)
+            else:
+                # If current chunk has content, flush it with overlap
+                flush_chunk(current_chunk_words)
+                # Start new chunk with overlap from end of previous
+                overlap = current_chunk_words[-overlap_words:] if current_chunk_words else []
+                current_chunk_words = overlap + para_words
+
+                # If a single paragraph exceeds max_words, split it
+                if len(current_chunk_words) > max_words * 2:
+                    for i in range(0, len(current_chunk_words), max_words - overlap_words):
+                        flush_chunk(current_chunk_words[i:i + max_words])
+                    current_chunk_words = []
+
+        flush_chunk(current_chunk_words)
+
+    return chunks
+
+def get_pdf_image(pdf_path, page_number):
+    with pdfplumber.open(pdf_path) as pdf:
+        page = pdf.pages[page_number - 1]
+        return page.to_image(resolution=150)

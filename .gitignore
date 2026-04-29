@@ -24,6 +24,8 @@ __pycache__/
 # =========================
 embeddings_store/
 *.pkl
+pdf_store/
+images/
 
 # =========================
 # Logs

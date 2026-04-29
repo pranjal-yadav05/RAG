@@ -1,13 +1,22 @@
 from fastapi import FastAPI, UploadFile, File
-from pdf_utils import extract_text_from_pdf, chunk_text
+from pdf_utils import extract_pages_with_positions, chunk_words
 from pydantic import BaseModel
 from openai import OpenAI
 from rag import create_embeddings, save_embeddings, load_embeddings, answer_from_chunks
 import hashlib
+import os
+from fastapi.staticfiles import StaticFiles
+
+
+
+os.makedirs("pdf_store", exist_ok=True)
+os.makedirs("images", exist_ok=True)
 
 app = FastAPI()
 
 chat_history = {}
+
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 class QuestionRequest(BaseModel):
     session_id: str
@@ -23,6 +32,10 @@ def upload_pdf(file: UploadFile = File(...)):
 
     file_hash = get_file_hash(file_bytes)
 
+    file_path = f"pdf_store/{file_hash}.pdf"
+    with open(file_path, "wb") as f:
+        f.write(file_bytes)
+
     cached = load_embeddings(file_hash)
     if cached:
         return {
@@ -33,8 +46,8 @@ def upload_pdf(file: UploadFile = File(...)):
     
     file.file.seek(0)
 
-    text = extract_text_from_pdf(file.file)
-    chunks = chunk_text(text)
+    pages = extract_pages_with_positions(file.file)
+    chunks = chunk_words(pages)
     embeddings = create_embeddings(chunks)
 
     save_embeddings(file_hash, {
@@ -64,15 +77,14 @@ def ask(req: QuestionRequest):
     history.append({ "role": "user", "content": req.query })
 
     # Answer with RAG
-    answer = answer_from_chunks(req.query, embeddings)
+    answer, highlights, images = answer_from_chunks(req.query, embeddings, req.file_hash, history=history)
     history.append({ "role": "assistant", "content": answer })
 
     recent_history = history[-5:]
     return {
         "query": req.query,
-        "history": recent_history
+        "answer": answer,
+        "highlights": highlights,
+        "history": recent_history,
+        "images": images
     }
-
-
-
-
