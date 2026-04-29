@@ -6,6 +6,7 @@ from rag import create_embeddings, save_embeddings, load_embeddings, answer_from
 import hashlib
 import os
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 
 
@@ -13,6 +14,22 @@ os.makedirs("pdf_store", exist_ok=True)
 os.makedirs("images", exist_ok=True)
 
 app = FastAPI()
+
+
+origins = os.getenv("CORS_ORIGINS", "").split(",")
+origins = [origin.strip() for origin in origins if origin]
+
+# fallback
+if not origins:
+    origins = ["http://localhost:3000"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # or ["*"] for quick testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 chat_history = {}
 

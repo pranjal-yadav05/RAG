@@ -27,6 +27,8 @@ embeddings_store/
 pdf_store/
 images/
 
+node_modules/
+
 # =========================
 # Logs
 # =========================
