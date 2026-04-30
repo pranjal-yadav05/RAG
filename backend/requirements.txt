@@ -9,3 +9,4 @@ bcrypt
 passlib
 python-jose
 motor
+python-dotenv
