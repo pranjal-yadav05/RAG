@@ -87,3 +87,12 @@ export function getImageUrl(imagePath) {
   if (imagePath.startsWith('http')) return imagePath
   return `${API_BASE_URL}/${imagePath}`
 }
+
+// Returns true if backend still has the file, false otherwise
+export async function checkFileExists(fileHash) {
+  const res = await fetch(`${API_BASE_URL}/check-file/${fileHash}`)
+  if (res.status === 404) return false
+  if (!res.ok) throw new Error('File check failed')
+  const data = await res.json()
+  return data.exists ?? true
+}

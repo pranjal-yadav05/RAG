@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { useState, useRef, useEffect } from 'react'
-import { Send, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useState, useRef, useEffect } from "react";
+import { Send, Loader2, ChevronUp, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function ChatPanel({
   messages,
@@ -10,30 +10,31 @@ export default function ChatPanel({
   fileHash,
   onSendMessage,
 }) {
-  const [inputValue, setInputValue] = useState('')
-  const messagesEndRef = useRef(null)
+  const [inputValue, setInputValue] = useState("");
+  const [openHighlights, setOpenHighlights] = useState({});
+  const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
   const handleSend = () => {
     if (inputValue.trim() && fileHash && !loading) {
-      onSendMessage(inputValue)
-      setInputValue('')
+      onSendMessage(inputValue);
+      setInputValue("");
     }
-  }
+  };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && fileHash && !loading) {
-      e.preventDefault()
-      handleSend()
+    if (e.key === "Enter" && !e.shiftKey && fileHash && !loading) {
+      e.preventDefault();
+      handleSend();
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-background border-r border-border overflow-hidden">
@@ -53,8 +54,7 @@ export default function ChatPanel({
                 className="w-6 h-6 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+                viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -64,10 +64,13 @@ export default function ChatPanel({
               </svg>
             </div>
             <p className="text-sm font-medium text-foreground">
-              {fileHash ? 'Start asking questions' : 'Upload a PDF to get started'}
+              {fileHash
+                ? "Start asking questions"
+                : "Upload a PDF to get started"}
             </p>
             <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-              Ask anything about your document and get instant answers with visual evidence
+              Ask anything about your document and get instant answers with
+              visual evidence
             </p>
           </div>
         ) : (
@@ -76,29 +79,51 @@ export default function ChatPanel({
               <div
                 key={message.id}
                 className={`flex ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                } animate-in fade-in slide-in-from-bottom-2 duration-300`}
-              >
+                  message.role === "user" ? "justify-end" : "justify-start"
+                } animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                 <div
                   className={`max-w-sm rounded-lg px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground rounded-br-none'
-                      : 'bg-card border border-border rounded-bl-none'
-                  }`}
-                >
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-none"
+                      : "bg-card border border-border rounded-bl-none"
+                  }`}>
                   <p className="text-sm leading-relaxed">{message.content}</p>
                   {message.highlights && message.highlights.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-xs font-medium mb-1 opacity-75">Highlights:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {message.highlights.map((h, i) => (
-                          <span
-                            key={i}
-                            className="inline-block text-xs bg-primary/20 px-2 py-1 rounded"
-                          >
-                            {h.text}
-                          </span>
-                        ))}
+                      <button
+                        onClick={() =>
+                          setOpenHighlights((prev) => ({
+                            ...prev,
+                            [message.id]: !prev[message.id],
+                          }))
+                        }
+                        className="text-xs font-medium opacity-75 hover:opacity-100 transition flex items-center gap-1">
+                        <span className="flex items-center gap-1">
+                          Highlights
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 opacity-70 transition-transform duration-300 ${
+                              openHighlights[message.id] ? "rotate-180" : ""
+                            }`}
+                          />
+                        </span>
+                      </button>
+
+                      {/* Animated container */}
+                      <div
+                        className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                          openHighlights[message.id]
+                            ? "opacity-100 translate-y-0 mt-2"
+                            : "max-h-0 opacity-0 -translate-y-1 mt-0"
+                        }`}>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {message.highlights.map((h, i) => (
+                            <span
+                              key={i}
+                              className="inline-block text-xs bg-primary/20 px-2 py-1 rounded">
+                              {h.text}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -114,11 +139,11 @@ export default function ChatPanel({
                       <div className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce" />
                       <div
                         className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce"
-                        style={{ animationDelay: '0.1s' }}
+                        style={{ animationDelay: "0.1s" }}
                       />
                       <div
                         className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce"
-                        style={{ animationDelay: '0.2s' }}
+                        style={{ animationDelay: "0.2s" }}
                       />
                     </div>
                   </div>
@@ -143,9 +168,7 @@ export default function ChatPanel({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              fileHash ? 'Ask a question...' : 'Upload a PDF first'
-            }
+            placeholder={fileHash ? "Ask a question..." : "Upload a PDF first"}
             disabled={!fileHash || loading}
             className="flex-1 min-h-10 px-3 py-2 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
             rows="1"
@@ -154,8 +177,7 @@ export default function ChatPanel({
             onClick={handleSend}
             disabled={!fileHash || loading || !inputValue.trim()}
             size="sm"
-            className="px-3 h-10 flex-shrink-0"
-          >
+            className="px-3 h-10 flex-shrink-0">
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
@@ -165,5 +187,5 @@ export default function ChatPanel({
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -5,4 +5,7 @@ openai
 streamlit
 numpy
 pdfplumber
-python-dotenv
+bcrypt
+passlib
+python-jose
+motor

@@ -67,7 +67,7 @@ def chunk_words(pages, max_words=150, overlap_words=30):
         current_top = None
 
         for w in words:
-            if current_top is None or abs(w["top"] - current_top) < 3:
+            if current_top is None or abs(w["top"] - current_top) < 5:
                 current_line.append(w)
                 current_top = w["top"]
             else:
@@ -104,8 +104,11 @@ def chunk_words(pages, max_words=150, overlap_words=30):
         def flush_chunk(word_list):
             if not word_list:
                 return
-            text = " ".join(w["text"] for w in word_list)
+            text = " ".join(
+                w["text"].strip() for w in word_list
+            ).replace("\n", " ")
             chunks.append({
+                "chunk_id": len(chunks),
                 "text": text,
                 "page_number": page_number,
                 "words": word_list
@@ -131,7 +134,17 @@ def chunk_words(pages, max_words=150, overlap_words=30):
 
     return chunks
 
+_pdf_cache = {}
+
 def get_pdf_image(pdf_path, page_number):
+    key = f"{pdf_path}_{page_number}"
+
+    if key in _pdf_cache:
+        return _pdf_cache[key]
+
     with pdfplumber.open(pdf_path) as pdf:
         page = pdf.pages[page_number - 1]
-        return page.to_image(resolution=150)
+        img = page.to_image(resolution=150)
+
+    _pdf_cache[key] = img
+    return img
